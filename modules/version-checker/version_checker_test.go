@@ -1,6 +1,7 @@
 package version_checker
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -8,105 +9,141 @@ import (
 func TestParamValidation(t *testing.T) {
 	t.Parallel()
 
-	// empty params
-	err := validateParams(CheckVersionParams{})
-	require.EqualError(t, err, "empty expectedVersion found")
+	tests := []struct {
+		param                CheckVersionParams
+		containError         bool
+		expectedErrorMessage string
+	}{
+		{
+			param:                CheckVersionParams{},
+			containError:         true,
+			expectedErrorMessage: "set ExpectedVersion in params",
+		},
+		{
+			param: CheckVersionParams{
+				Binary:          -1,
+				ExpectedVersion: "1.2",
+				WorkingDir:      ".",
+			},
+			containError:         true,
+			expectedErrorMessage: "set Binary in params",
+		},
+		{
+			param: CheckVersionParams{
+				Binary:          Docker,
+				ExpectedVersion: "1.2",
+				WorkingDir:      "",
+			},
+			containError:         true,
+			expectedErrorMessage: "set WorkingDir in params",
+		},
+		{
+			param: CheckVersionParams{
+				Binary:          Docker,
+				ExpectedVersion: "abc",
+				WorkingDir:      ".",
+			},
+			containError:         true,
+			expectedErrorMessage: "invalid version format found {abc}",
+		},
+		{
+			param: CheckVersionParams{
+				Binary:          Docker,
+				ExpectedVersion: "1.2.3",
+				WorkingDir:      ".",
+			},
+			containError:         false,
+			expectedErrorMessage: "",
+		},
+	}
 
-	// invalid binary
-	err = validateParams(CheckVersionParams{
-		binary:          -1,
-		expectedVersion: "1.2",
-		workingDir:      ".",
-	})
-	require.EqualError(t, err, "empty binary found")
-
-	// invalid working Dir
-	err = validateParams(CheckVersionParams{
-		binary:          Docker,
-		expectedVersion: "1.2",
-		workingDir:      "",
-	})
-	require.EqualError(t, err, "empty workingDir found")
-
-	// invalid expected version
-	err = validateParams(CheckVersionParams{
-		binary:          Docker,
-		expectedVersion: "abc",
-		workingDir:      ".",
-	})
-	require.EqualError(t, err, "invalid expected version format found {abc}")
-
-	// valid params
-	err = validateParams(CheckVersionParams{
-		binary:          Docker,
-		expectedVersion: "1.2.3",
-		workingDir:      ".",
-	})
-	require.NoError(t, err)
+	for _, tc := range tests {
+		err := validateParams(tc.param)
+		testCaseContextStr := fmt.Sprintf("test case w/ param: %v", tc.param)
+		if tc.containError {
+			require.EqualError(t, err, tc.expectedErrorMessage, testCaseContextStr)
+		} else {
+			require.NoError(t, err, testCaseContextStr)
+		}
+	}
 }
 
 func TestExtractVersionFromShellCommandOutput(t *testing.T) {
 	t.Parallel()
 
-	// empty output
-	_, err := extractVersionFromShellCommandOutput("")
-	require.EqualError(t, err, "failed to find version using regex matcher")
+	tests := []struct {
+		outputStr            string
+		expectedVersionStr   string
+		containError         bool
+		expectedErrorMessage string
+	}{
+		{outputStr: "version is 1.2.3", expectedVersionStr: "1.2.3", containError: false,
+			expectedErrorMessage: ""},
+		{outputStr: "version is v1.0.0", expectedVersionStr: "1.0.0", containError: false,
+			expectedErrorMessage: ""},
+		{outputStr: "version is v1.0", expectedVersionStr: "1.0", containError: false,
+			expectedErrorMessage: ""},
+		{outputStr: "version is vabc", expectedVersionStr: "", containError: true,
+			expectedErrorMessage: "failed to find version using regex matcher"},
+		{outputStr: "", expectedVersionStr: "", containError: true,
+			expectedErrorMessage: "failed to find version using regex matcher"},
+	}
 
-	// invalid version output from shell command
-	_, err = extractVersionFromShellCommandOutput("invalid output")
-	require.EqualError(t, err, "failed to find version using regex matcher")
+	for _, tc := range tests {
+		versionStr, err := extractVersionFromShellCommandOutput(tc.outputStr)
+		testCaseContextStr := fmt.Sprintf("test case w/ outputStr: %s", tc.outputStr)
+		if tc.containError {
+			require.EqualError(t, err, tc.expectedErrorMessage, testCaseContextStr)
+		} else {
+			require.NoError(t, err, testCaseContextStr)
+			require.Equal(t, tc.expectedVersionStr, versionStr, testCaseContextStr)
+		}
+	}
 }
 
 func TestValidateBinaryVersionGreaterOrEqual(t *testing.T) {
 	t.Parallel()
 
-	// empty versionStr1
-	err := validateBinaryVersionGreaterOrEqual("", "")
-	require.EqualError(t, err, "empty versionStr1 found")
+	tests := []struct {
+		actualVersionStr     string
+		minimumVersionStr    string
+		containError         bool
+		expectedErrorMessage string
+	}{
+		{actualVersionStr: "", minimumVersionStr: "1.2.3", containError: true,
+			expectedErrorMessage: "invalid version format found for actualVersionStr: "},
+		{actualVersionStr: "1.2.3", minimumVersionStr: "", containError: true,
+			expectedErrorMessage: "invalid version format found for minimumVersionStr: "},
+		{actualVersionStr: "1.2.3", minimumVersionStr: "1.2.3", containError: false,
+			expectedErrorMessage: ""},
+		{actualVersionStr: "1.2.4", minimumVersionStr: "1.2.3", containError: false,
+			expectedErrorMessage: ""},
+		{actualVersionStr: "1.2", minimumVersionStr: "1.2.3", containError: true,
+			expectedErrorMessage: "found version mismatch {1.2.3} when expecting min version of {1.2}"},
+	}
 
-	// empty versionStr2
-	err = validateBinaryVersionGreaterOrEqual("1.2.3", "")
-	require.EqualError(t, err, "empty versionStr2 found")
-
-	// invalid format versionStr1
-	err = validateBinaryVersionGreaterOrEqual("abc", "1.2.3")
-	require.EqualError(t, err, "invalid format version found {abc}")
-
-	// invalid format versionStr2
-	err = validateBinaryVersionGreaterOrEqual("1.2.3", "abc")
-	require.EqualError(t, err, "invalid format version found {abc}")
-
-	// versionStr1 > versionStr2
-	err = validateBinaryVersionGreaterOrEqual("1.2.3", "1.2.2")
-	require.NoError(t, err)
-
-	// versionStr1 = versionStr2
-	err = validateBinaryVersionGreaterOrEqual("1.2.3", "1.2.3")
-	require.NoError(t, err)
-
-	// versionStr1 < versionStr2
-	err = validateBinaryVersionGreaterOrEqual("1.2.3", "1.2.4")
-	require.EqualError(t, err, "binary version {1.2.3} is smaller than {1.2.4}")
-
-	// mismatching version length: versionStr1 > versionStr2
-	err = validateBinaryVersionGreaterOrEqual("1.2", "1.2.4")
-	require.EqualError(t, err, "binary version {1.2} is smaller than {1.2.4}")
-
-	// mismatching version length: versionStr1 < versionStr2
-	err = validateBinaryVersionGreaterOrEqual("1.2.4", "1.2")
-	require.NoError(t, err)
+	for _, tc := range tests {
+		err := checkMinimumBinaryVersion(tc.actualVersionStr, tc.minimumVersionStr)
+		testCaseContextStr := fmt.Sprintf("test case w/ actualVersionStr: %s, expectedVersionstr: %s",
+			tc.actualVersionStr, tc.minimumVersionStr)
+		if tc.containError {
+			require.EqualError(t, err, tc.expectedErrorMessage, testCaseContextStr)
+		} else {
+			require.NoError(t, err, testCaseContextStr)
+		}
+	}
 }
 
 func TestCheckVersionSanityCheck(t *testing.T) {
 	t.Parallel()
 
 	// Note: with the current implementation of running shell command, it's not easy to
-	// mock the output of running a shell command. So we assume a certain binary is installed in the working
+	// mock the output of running a shell command. So we assume a certain Binary is installed in the working
 	// directory and it's greater than 0.
 	err := CheckVersionE(t, CheckVersionParams{
-		binary:          Terraform,
-		expectedVersion: "0.0.1",
-		workingDir:      ".",
+		Binary:          Terraform,
+		ExpectedVersion: "0.0.1",
+		WorkingDir:      ".",
 	})
 	require.NoError(t, err)
 }
