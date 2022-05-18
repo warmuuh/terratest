@@ -19,14 +19,6 @@ const (
 	Packer
 )
 
-// VersionCheckerType is an enum for different type of version checking available.
-type VersionCheckerType int
-
-const (
-	MinimumVersion VersionCheckerType = iota
-	VersionConstraint
-)
-
 const (
 	// versionRegexMatcher is a regex used to extract version string from shell command output.
 	versionRegexMatcher = `\d+(\.\d+)+`
@@ -39,10 +31,6 @@ type CheckVersionParams struct {
 	BinaryPath string
 	// Binary is the name of the binary you want to check the version for.
 	Binary VersionCheckerBinary
-	// VersionCheckerType to specify different ways to enforce certain version on binary.
-	VersionCheckerType VersionCheckerType
-	// MinimumVersion is a string literal containing a minimum version (e.g., 1.2.1)
-	MinimumVersion string
 	// VersionConstraint is a string literal containing one or more conditions, which are separated by commas.
 	// More information here:https://www.terraform.io/language/expressions/version-constraints
 	VersionConstraint string
@@ -65,17 +53,7 @@ func CheckVersionE(
 		return err
 	}
 
-	var versionConstraint string
-	switch params.VersionCheckerType {
-	case MinimumVersion:
-		versionConstraint = ">" + params.MinimumVersion
-	case VersionConstraint:
-		versionConstraint = params.VersionConstraint
-	default:
-		return fmt.Errorf("unsupported version checker type {%d}", params.VersionCheckerType)
-	}
-
-	return checkVersionConstraint(binaryVersion, versionConstraint)
+	return checkVersionConstraint(binaryVersion, params.VersionConstraint)
 }
 
 // CheckVersion checks whether the given Binary version is greater than or equal to the
@@ -91,16 +69,8 @@ func validateParams(params CheckVersionParams) error {
 	// Check for empty parameters
 	if params.WorkingDir == "" {
 		return fmt.Errorf("set WorkingDir in params")
-	} else if params.VersionCheckerType == MinimumVersion && params.MinimumVersion == "" {
-		return fmt.Errorf("set MinimumVersion in params")
-	} else if params.VersionCheckerType == VersionConstraint && params.VersionConstraint == "" {
+	} else if params.VersionConstraint == "" {
 		return fmt.Errorf("set VersionConstraint in params")
-	}
-
-	// Check the format of the expected version.
-	if _, err := version.NewVersion(params.MinimumVersion); params.MinimumVersion != "" && err != nil {
-		return fmt.Errorf(
-			"invalid minimum version format found {%s}", params.MinimumVersion)
 	}
 
 	// Check the format of the version constraint if present.

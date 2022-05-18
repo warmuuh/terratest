@@ -21,47 +21,21 @@ func TestParamValidation(t *testing.T) {
 			expectedErrorMessage: "set WorkingDir in params",
 		},
 		{
-			name: "Missing MinimumVersion",
-			param: CheckVersionParams{
-				VersionCheckerType: MinimumVersion,
-				Binary:             Docker,
-				VersionConstraint:  "",
-				MinimumVersion:     "",
-				WorkingDir:         ".",
-			},
-			containError:         true,
-			expectedErrorMessage: "set MinimumVersion in params",
-		},
-		{
 			name: "Missing VersionConstraint",
 			param: CheckVersionParams{
-				VersionCheckerType: VersionConstraint,
-				Binary:             Docker,
-				VersionConstraint:  "",
-				MinimumVersion:     "",
-				WorkingDir:         ".",
+				Binary:            Docker,
+				VersionConstraint: "",
+				WorkingDir:        ".",
 			},
 			containError:         true,
 			expectedErrorMessage: "set VersionConstraint in params",
 		},
 		{
-			name: "Invalid Minimum Version Format",
-			param: CheckVersionParams{
-				VersionCheckerType: MinimumVersion,
-				Binary:             Docker,
-				MinimumVersion:     "abc",
-				WorkingDir:         ".",
-			},
-			containError:         true,
-			expectedErrorMessage: "invalid minimum version format found {abc}",
-		},
-		{
 			name: "Invalid Version Constraint Format",
 			param: CheckVersionParams{
-				VersionCheckerType: VersionConstraint,
-				Binary:             Docker,
-				VersionConstraint:  "abc",
-				WorkingDir:         ".",
+				Binary:            Docker,
+				VersionConstraint: "abc",
+				WorkingDir:        ".",
 			},
 			containError:         true,
 			expectedErrorMessage: "invalid version constraint format found {abc}",
@@ -69,10 +43,9 @@ func TestParamValidation(t *testing.T) {
 		{
 			name: "Success",
 			param: CheckVersionParams{
-				VersionCheckerType: MinimumVersion,
-				Binary:             Docker,
-				MinimumVersion:     "1.2.3",
-				WorkingDir:         ".",
+				Binary:            Docker,
+				VersionConstraint: ">1.2.3",
+				WorkingDir:        ".",
 			},
 			containError:         false,
 			expectedErrorMessage: "",
@@ -220,24 +193,21 @@ func TestCheckVersionEndToEnd(t *testing.T) {
 		param CheckVersionParams
 	}{
 		{name: "Docker", param: CheckVersionParams{
-			Binary:             Docker,
-			VersionCheckerType: MinimumVersion,
-			MinimumVersion:     "0.0.1",
-			WorkingDir:         ".",
+			Binary:            Docker,
+			VersionConstraint: ">= 0.0.1",
+			WorkingDir:        ".",
 		}},
 		{name: "Terraform", param: CheckVersionParams{
-			BinaryPath:         "",
-			Binary:             Terraform,
-			VersionCheckerType: VersionConstraint,
-			VersionConstraint:  ">= 0.0.1",
-			WorkingDir:         ".",
+			BinaryPath:        "",
+			Binary:            Terraform,
+			VersionConstraint: ">= 0.0.1",
+			WorkingDir:        ".",
 		}},
 		{name: "Packer", param: CheckVersionParams{
-			BinaryPath:         "/usr/local/bin/packer",
-			Binary:             Packer,
-			VersionCheckerType: MinimumVersion,
-			MinimumVersion:     "0.0.1",
-			WorkingDir:         ".",
+			BinaryPath:        "/usr/local/bin/packer",
+			Binary:            Packer,
+			VersionConstraint: ">= 0.0.1",
+			WorkingDir:        ".",
 		}},
 	}
 
