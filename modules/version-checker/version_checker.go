@@ -2,11 +2,12 @@ package version_checker
 
 import (
 	"fmt"
+	"regexp"
+
 	"github.com/gruntwork-io/terratest/modules/shell"
 	"github.com/gruntwork-io/terratest/modules/testing"
 	"github.com/hashicorp/go-version"
 	"github.com/stretchr/testify/require"
-	"regexp"
 )
 
 // VersionCheckerBinary is an enum for supported version checking.
