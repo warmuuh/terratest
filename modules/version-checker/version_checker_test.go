@@ -147,63 +147,6 @@ func TestExtractVersionFromShellCommandOutput(t *testing.T) {
 	}
 }
 
-func TestCheckMimnimumVersion(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name                 string
-		actualVersionStr     string
-		minimumVersionStr    string
-		containError         bool
-		expectedErrorMessage string
-	}{
-		{
-			name:                 "invalid actualVersionStr",
-			actualVersionStr:     "",
-			minimumVersionStr:    "1.2.3",
-			containError:         true,
-			expectedErrorMessage: "invalid version format found for actualVersionStr: ",
-		},
-		{
-			name:                 "invalid minimumVersionStr",
-			actualVersionStr:     "1.2.3",
-			minimumVersionStr:    "",
-			containError:         true,
-			expectedErrorMessage: "invalid version format found for minimumVersionStr: ",
-		},
-		{
-			name:                 "same version as minimum version",
-			actualVersionStr:     "1.2.3",
-			minimumVersionStr:    "1.2.3",
-			containError:         false,
-			expectedErrorMessage: "",
-		},
-		{
-			name:                 "higher version as minimum version",
-			actualVersionStr:     "1.2.4",
-			minimumVersionStr:    "1.2.3",
-			containError:         false,
-			expectedErrorMessage: "",
-		},
-		{
-			name:                 "lower version as minimum version",
-			actualVersionStr:     "1.2.2",
-			minimumVersionStr:    "1.2.3",
-			containError:         true,
-			expectedErrorMessage: "actual version {1.2.2} is less than the minimum version required {1.2.3}",
-		},
-	}
-
-	for _, tc := range tests {
-		err := checkMinimumVersion(tc.actualVersionStr, tc.minimumVersionStr)
-		if tc.containError {
-			require.EqualError(t, err, tc.expectedErrorMessage, tc.name)
-		} else {
-			require.NoError(t, err, tc.name)
-		}
-	}
-}
-
 func TestCheckVersionConstraint(t *testing.T) {
 	t.Parallel()
 
@@ -267,17 +210,39 @@ func TestCheckVersionConstraint(t *testing.T) {
 	}
 }
 
-func TestCheckVersionSanityCheck(t *testing.T) {
+// Note: with the current implementation of running shell command, it's not easy to
+// mock the output of running a shell command. So we assume a certain Binary is installed in the working
+// directory and it's greater than 0.0.1 version.
+func TestCheckVersionEndToEnd(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		name  string
+		param CheckVersionParams
+	}{
+		{name: "Docker", param: CheckVersionParams{
+			Binary:             Docker,
+			VersionCheckerType: MinimumVersion,
+			MinimumVersion:     "0.0.1",
+			WorkingDir:         ".",
+		}},
+		{name: "Terraform", param: CheckVersionParams{
+			BinaryPath:         "",
+			Binary:             Terraform,
+			VersionCheckerType: VersionConstraint,
+			VersionConstraint:  ">= 0.0.1",
+			WorkingDir:         ".",
+		}},
+		{name: "Packer", param: CheckVersionParams{
+			BinaryPath:         "/usr/local/bin/packer",
+			Binary:             Packer,
+			VersionCheckerType: MinimumVersion,
+			MinimumVersion:     "0.0.1",
+			WorkingDir:         ".",
+		}},
+	}
 
-	// Note: with the current implementation of running shell command, it's not easy to
-	// mock the output of running a shell command. So we assume a certain Binary is installed in the working
-	// directory and it's greater than 0.
-	err := CheckVersionE(t, CheckVersionParams{
-		VersionCheckerType: MinimumVersion,
-		Binary:             Terraform,
-		MinimumVersion:     "0.0.1",
-		WorkingDir:         ".",
-	})
-	require.NoError(t, err)
+	for _, tc := range tests {
+		err := CheckVersionE(t, tc.param)
+		require.NoError(t, err, tc.name)
+	}
 }

@@ -65,16 +65,17 @@ func CheckVersionE(
 		return err
 	}
 
+	var versionConstraint string
 	switch params.VersionCheckerType {
 	case MinimumVersion:
-		err = checkMinimumVersion(binaryVersion, params.MinimumVersion)
+		versionConstraint = ">" + params.MinimumVersion
 	case VersionConstraint:
-		err = checkVersionConstraint(binaryVersion, params.VersionConstraint)
+		versionConstraint = params.VersionConstraint
 	default:
 		return fmt.Errorf("unsupported version checker type {%d}", params.VersionCheckerType)
 	}
 
-	return err
+	return checkVersionConstraint(binaryVersion, versionConstraint)
 }
 
 // CheckVersion checks whether the given Binary version is greater than or equal to the
@@ -169,34 +170,6 @@ func extractVersionFromShellCommandOutput(output string) (string, error) {
 	}
 
 	return versionStr, nil
-}
-
-// checkMinimumVersion checks whether the given version is greater
-// than or equal to the given minimum version.
-//
-//    checkMinimumVersion(t, 1.0.31, 1.0.27) - no error
-//    checkMinimumVersion(t, 1.0.10, 1.0.27) - error
-//    checkMinimumVersion(t, 1.0, 1.0.10) - error
-func checkMinimumVersion(actualVersionStr string, minimumVersionStr string) error {
-	actualVersion, err := version.NewVersion(actualVersionStr)
-	if err != nil {
-		return fmt.Errorf("invalid version format found for actualVersionStr: %s", actualVersionStr)
-	}
-
-	minimumVersion, err := version.NewVersion(minimumVersionStr)
-	if err != nil {
-		return fmt.Errorf("invalid version format found for minimumVersionStr: %s", minimumVersionStr)
-	}
-
-	if actualVersion.LessThan(minimumVersion) {
-		return &VersionMismatchErr{
-			errorMessage: fmt.Sprintf("actual version {%s} is less than the "+
-				"minimum version required {%s}", actualVersionStr, minimumVersionStr),
-		}
-	}
-
-	return nil
-
 }
 
 // checkVersionConstraint checks whether the given version pass the version constraint.
