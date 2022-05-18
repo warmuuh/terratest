@@ -9,17 +9,6 @@ import (
 	"regexp"
 )
 
-// VersionMismatchErr is an error to indicate version mismatch.
-type VersionMismatchErr struct {
-	expectedVersion string
-	actualVersion   string
-}
-
-func (r *VersionMismatchErr) Error() string {
-	return fmt.Sprintf("found version mismatch {%s} when "+
-		"expecting min version of {%s}", r.expectedVersion, r.actualVersion)
-}
-
 // VersionCheckerBinary is an enum for supported version checking.
 type VersionCheckerBinary int
 
@@ -30,6 +19,14 @@ const (
 	Packer
 )
 
+// VersionCheckerType is an enum for different type of version checking available.
+type VersionCheckerType int
+
+const (
+	MinimumVersion VersionCheckerType = iota
+	VersionConstraint
+)
+
 const (
 	// versionRegexMatcher is a regex used to extract version string from shell command output.
 	versionRegexMatcher = `\d+(\.\d+)+`
@@ -38,9 +35,19 @@ const (
 )
 
 type CheckVersionParams struct {
-	Binary          VersionCheckerBinary
-	ExpectedVersion string
-	WorkingDir      string
+	// BinaryPath is a path to the binary you want to check the version for.
+	BinaryPath string
+	// Binary is the name of the binary you want to check the version for.
+	Binary VersionCheckerBinary
+	// VersionCheckerType to specify different ways to enforce certain version on binary.
+	VersionCheckerType VersionCheckerType
+	// MinimumVersion is a string literal containing a minimum version (e.g., 1.2.1)
+	MinimumVersion string
+	// VersionConstraint is a string literal containing one or more conditions, which are separated by commas.
+	// More information here:https://www.terraform.io/language/expressions/version-constraints
+	VersionConstraint string
+	// WorkingDir is a directory you want to run the shell command.
+	WorkingDir string
 }
 
 // CheckVersionE checks whether the given Binary version is greater than or equal
@@ -58,15 +65,20 @@ func CheckVersionE(
 		return err
 	}
 
-	if err := checkMinimumBinaryVersion(binaryVersion, params.ExpectedVersion); err != nil {
-		return err
+	switch params.VersionCheckerType {
+	case MinimumVersion:
+		err = checkMinimumVersion(binaryVersion, params.MinimumVersion)
+	case VersionConstraint:
+		err = checkVersionConstraint(binaryVersion, params.VersionConstraint)
+	default:
+		return fmt.Errorf("unsupported version checker type {%d}", params.VersionCheckerType)
 	}
 
-	return nil
+	return err
 }
 
 // CheckVersion checks whether the given Binary version is greater than or equal to the
-// given expected version and fail if it's not.
+// given expected version and fails if it's not.
 func CheckVersion(
 	t testing.TestingT,
 	params CheckVersionParams) {
@@ -76,18 +88,24 @@ func CheckVersion(
 // Validate whether the given params contains valid data to check version.
 func validateParams(params CheckVersionParams) error {
 	// Check for empty parameters
-	if params.ExpectedVersion == "" {
-		return fmt.Errorf("set ExpectedVersion in params")
-	} else if params.WorkingDir == "" {
+	if params.WorkingDir == "" {
 		return fmt.Errorf("set WorkingDir in params")
-	} else if params.Binary < 0 {
-		return fmt.Errorf("set Binary in params")
+	} else if params.VersionCheckerType == MinimumVersion && params.MinimumVersion == "" {
+		return fmt.Errorf("set MinimumVersion in params")
+	} else if params.VersionCheckerType == VersionConstraint && params.VersionConstraint == "" {
+		return fmt.Errorf("set VersionConstraint in params")
 	}
 
 	// Check the format of the expected version.
-	if _, err := version.NewVersion(params.ExpectedVersion); err != nil {
+	if _, err := version.NewVersion(params.MinimumVersion); params.MinimumVersion != "" && err != nil {
 		return fmt.Errorf(
-			"invalid version format found {%s}", params.ExpectedVersion)
+			"invalid minimum version format found {%s}", params.MinimumVersion)
+	}
+
+	// Check the format of the version constraint if present.
+	if _, err := version.NewConstraint(params.VersionConstraint); params.VersionConstraint != "" && err != nil {
+		return fmt.Errorf(
+			"invalid version constraint format found {%s}", params.VersionConstraint)
 	}
 
 	return nil
@@ -95,31 +113,22 @@ func validateParams(params CheckVersionParams) error {
 
 // getVersionWithShellCommand get version by running a shell command.
 func getVersionWithShellCommand(t testing.TestingT, params CheckVersionParams) (string, error) {
-	// Set appropriate Binary, versionArg and extract version function
-	// based on the given parameters.
-	var binaryName = ""
 	var versionArg = defaultVersionArg
-	switch params.Binary {
-	case Docker:
-		binaryName = "docker"
-	case Packer:
-		binaryName = "packer"
-	case Terraform:
-		binaryName = "terraform"
-	default:
-		t.Fatalf("unsupported Binary for checking versions {%s}.", params.Binary)
+	binary, err := getBinary(params)
+	if err != nil {
+		return "", err
 	}
 
 	// Run a shell command to get the version string.
 	output, err := shell.RunCommandAndGetOutputE(t, shell.Command{
-		Command:    binaryName,
+		Command:    binary,
 		Args:       []string{versionArg},
 		WorkingDir: params.WorkingDir,
 		Env:        map[string]string{},
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to run shell command for Binary {%s} "+
-			"w/ version args {%s}: %w", binaryName, versionArg, err)
+			"w/ version args {%s}: %w", binary, versionArg, err)
 	}
 
 	versionStr, err := extractVersionFromShellCommandOutput(output)
@@ -129,6 +138,25 @@ func getVersionWithShellCommand(t testing.TestingT, params CheckVersionParams) (
 	}
 
 	return versionStr, nil
+}
+
+// getBinary retrieves the binary to use from the given params.
+func getBinary(params CheckVersionParams) (string, error) {
+	// Use BinaryPath if it is set, otherwise use the binary enum.
+	if params.BinaryPath != "" {
+		return params.BinaryPath, nil
+	}
+
+	switch params.Binary {
+	case Docker:
+		return "docker", nil
+	case Packer:
+		return "packer", nil
+	case Terraform:
+		return "terraform", nil
+	default:
+		return "", fmt.Errorf("unsupported Binary for checking versions {%d}", params.Binary)
+	}
 }
 
 // extractVersionFromShellCommandOutput extracts version with regex string matching
@@ -143,31 +171,58 @@ func extractVersionFromShellCommandOutput(output string) (string, error) {
 	return versionStr, nil
 }
 
-// checkMinimumBinaryVersion checks whether the given version is greater
+// checkMinimumVersion checks whether the given version is greater
 // than or equal to the given minimum version.
 //
-// It returns Error for ill-formatted version string and VersionMismatchErr for
-// minimum version check failure.
-//
-//    checkMinimumBinaryVersion(t, 1.0.31, 1.0.27) - no error
-//    checkMinimumBinaryVersion(t, 1.0.10, 1.0.27) - error
-//    checkMinimumBinaryVersion(t, 1.0, 1.0.10) - error
-func checkMinimumBinaryVersion(actualVersionStr string, minimumVersionStr string) error {
-	version1, err := version.NewVersion(actualVersionStr)
+//    checkMinimumVersion(t, 1.0.31, 1.0.27) - no error
+//    checkMinimumVersion(t, 1.0.10, 1.0.27) - error
+//    checkMinimumVersion(t, 1.0, 1.0.10) - error
+func checkMinimumVersion(actualVersionStr string, minimumVersionStr string) error {
+	actualVersion, err := version.NewVersion(actualVersionStr)
 	if err != nil {
 		return fmt.Errorf("invalid version format found for actualVersionStr: %s", actualVersionStr)
 	}
 
-	version2, err := version.NewVersion(minimumVersionStr)
+	minimumVersion, err := version.NewVersion(minimumVersionStr)
 	if err != nil {
 		return fmt.Errorf("invalid version format found for minimumVersionStr: %s", minimumVersionStr)
 	}
 
-	if version1.LessThan(version2) {
+	if actualVersion.LessThan(minimumVersion) {
 		return &VersionMismatchErr{
-			expectedVersion: minimumVersionStr,
-			actualVersion:   actualVersionStr,
+			errorMessage: fmt.Sprintf("actual version {%s} is less than the "+
+				"minimum version required {%s}", actualVersionStr, minimumVersionStr),
 		}
+	}
+
+	return nil
+
+}
+
+// checkVersionConstraint checks whether the given version pass the version constraint.
+//
+// It returns Error for ill-formatted version string and VersionMismatchErr for
+// minimum version check failure.
+//
+//    checkVersionConstraint(t, "1.2.31",  ">= 1.2.0, < 2.0.0") - no error
+//    checkVersionConstraint(t, "1.0.31",  ">= 1.2.0, < 2.0.0") - error
+func checkVersionConstraint(actualVersionStr string, versionConstraintStr string) error {
+	actualVersion, err := version.NewVersion(actualVersionStr)
+	if err != nil {
+		return fmt.Errorf("invalid version format found for actualVersionStr: %s", actualVersionStr)
+	}
+
+	versionConstraint, err := version.NewConstraint(versionConstraintStr)
+	if err != nil {
+		return fmt.Errorf("invalid version format found for versionConstraint: %s", versionConstraintStr)
+	}
+
+	if !versionConstraint.Check(actualVersion) {
+		return &VersionMismatchErr{
+			errorMessage: fmt.Sprintf("actual version {%s} failed "+
+				"the version constraint {%s}", actualVersionStr, versionConstraint),
+		}
+
 	}
 
 	return nil
