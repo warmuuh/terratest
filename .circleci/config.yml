@@ -119,7 +119,7 @@ jobs:
       - run:
           name: run precommit
           command: |
-            go get golang.org/x/tools/cmd/goimports@v0.1.9
+            go install golang.org/x/tools/cmd/goimports@latest
             # Install the latest minor version for v2
             pip install pre-commit~=2.9
             pre-commit install
@@ -135,6 +135,8 @@ jobs:
             # our Linux or Mac OSX dev environments. We workaround this by running `go mod tidy` in the CircleCI
             # environment so it pulls in what it needs.
             go mod tidy
+
+            go install github.com/mitchellh/gox@latest
 
             GO_ENABLED=0 build-go-binaries \
               --parallel "$BIN_BUILD_PARALLELISM" \
@@ -361,6 +363,7 @@ workflows:
       - test:
           context:
             - Gruntwork Admin
+            - Slack Token For Test
           requires:
             - setup
           filters:
