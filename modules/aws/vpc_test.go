@@ -76,6 +76,31 @@ func TestIsPublicSubnet(t *testing.T) {
 	assert.True(t, IsPublicSubnet(t, *subnet.SubnetId, region))
 }
 
+func TestGetDefaultSubnetIDsForVpc(t *testing.T) {
+	t.Parallel()
+
+	region := GetRandomStableRegion(t, nil, nil)
+	vpc := GetDefaultVpc(t, region)
+
+	defaultSubnetIDs := GetDefaultSubnetIDsForVpc(t, *vpc)
+	assert.NotEmpty(t, defaultSubnetIDs)
+
+	availabilityZones := []string{}
+	for _, id := range defaultSubnetIDs {
+		for _, subnet := range vpc.Subnets {
+			if id == subnet.Id {
+				availabilityZones = append(availabilityZones, subnet.AvailabilityZone)
+			}
+		}
+	}
+	// only one default subnet is allowed per AZ
+	uniqueAZs := map[string]bool{}
+	for _, az := range availabilityZones {
+		uniqueAZs[az] = true
+	}
+	assert.Equal(t, len(defaultSubnetIDs), len(uniqueAZs))
+}
+
 func TestGetTagsForVpc(t *testing.T) {
 	t.Parallel()
 
