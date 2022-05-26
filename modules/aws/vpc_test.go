@@ -87,6 +87,9 @@ func TestGetDefaultSubnetIDsForVpc(t *testing.T) {
 
 	availabilityZones := []string{}
 	for _, id := range defaultSubnetIDs {
+		// default subnets are by default public
+		// https://docs.aws.amazon.com/vpc/latest/userguide/default-vpc.html
+		assert.True(t, IsPublicSubnet(t, id, region))
 		for _, subnet := range vpc.Subnets {
 			if id == subnet.Id {
 				availabilityZones = append(availabilityZones, subnet.AvailabilityZone)
