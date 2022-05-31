@@ -205,7 +205,7 @@ func GetDefaultSubnetIDsForVpcE(t testing.TestingT, vpc Vpc) ([]string, error) {
 	}
 
 	for _, subnet := range vpc.Subnets {
-		if subnet.DefaultForAz == true {
+		if subnet.DefaultForAz {
 			subnetIDs = append(subnetIDs, subnet.Id)
 		}
 	}
