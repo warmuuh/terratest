@@ -2,6 +2,8 @@ package http_helper
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -19,6 +21,56 @@ func getTestServerForFunction(handler func(w http.ResponseWriter,
 	return httptest.NewServer(http.HandlerFunc(handler))
 }
 
+func getTLSTestServerForFunction(handler func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(handler))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+
+	return server
+}
+
+func getTLSConfigForTestServer(server *httptest.Server) *tls.Config {
+	certpool := x509.NewCertPool()
+	certpool.AddCert(server.Certificate())
+	return &tls.Config{
+		RootCAs: certpool,
+	}
+}
+
+func TestHttpGet(t *testing.T) {
+	expectedBody := "Hello, Terratest!"
+	t.Parallel()
+	ts := getTestServerForFunction(getHandler(expectedBody))
+	defer ts.Close()
+	url := ts.URL
+	statusCode, respBody := HttpGet(t, url, nil)
+
+	expectedCode := 200
+	if statusCode != expectedCode {
+		t.Errorf("handler returned wrong status code: got %v want %v", statusCode, expectedCode)
+	}
+	if respBody != expectedBody {
+		t.Errorf("handler returned wrong body: got %v want %v", respBody, expectedBody)
+	}
+}
+
+func TestTLSHttpGet(t *testing.T) {
+	expectedBody := "Hello, Terratest!"
+	t.Parallel()
+	ts := getTLSTestServerForFunction(getHandler(expectedBody))
+	defer ts.Close()
+	url := ts.URL
+	statusCode, respBody := HttpGet(t, url, getTLSConfigForTestServer(ts))
+
+	expectedCode := 200
+	if statusCode != expectedCode {
+		t.Errorf("handler returned wrong status code: got %v want %v", statusCode, expectedCode)
+	}
+	if respBody != expectedBody {
+		t.Errorf("handler returned wrong body: got %v want %v", respBody, expectedBody)
+	}
+}
+
 func TestOkBody(t *testing.T) {
 	t.Parallel()
 	ts := getTestServerForFunction(bodyCopyHandler)
@@ -27,6 +79,24 @@ func TestOkBody(t *testing.T) {
 	expectedBody := "Hello, Terratest!"
 	body := bytes.NewReader([]byte(expectedBody))
 	statusCode, respBody := HTTPDo(t, "POST", url, body, nil, nil)
+
+	expectedCode := 200
+	if statusCode != expectedCode {
+		t.Errorf("handler returned wrong status code: got %v want %v", statusCode, expectedCode)
+	}
+	if respBody != expectedBody {
+		t.Errorf("handler returned wrong body: got %v want %v", respBody, expectedBody)
+	}
+}
+
+func TestTLSOkBody(t *testing.T) {
+	t.Parallel()
+	ts := getTLSTestServerForFunction(bodyCopyHandler)
+	defer ts.Close()
+	url := ts.URL
+	expectedBody := "Hello, Terratest!"
+	body := bytes.NewReader([]byte(expectedBody))
+	statusCode, respBody := HTTPDo(t, "POST", url, body, nil, getTLSConfigForTestServer(ts))
 
 	expectedCode := 200
 	if statusCode != expectedCode {
@@ -136,6 +206,13 @@ func TestErrorWithRetry(t *testing.T) {
 	match, _ := regexp.MatchString(pattern, err.Error())
 	if !match {
 		t.Errorf("handler didn't return an expected error, got %q", err)
+	}
+}
+
+func getHandler(body string) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(body))
 	}
 }
 

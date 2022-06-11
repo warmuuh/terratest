@@ -58,15 +58,11 @@ func HttpGetE(t testing.TestingT, url string, tlsConfig *tls.Config) (int, strin
 func HttpGetWithOptionsE(t testing.TestingT, options HttpGetOptions) (int, string, error) {
 	logger.Logf(t, "Making an HTTP GET call to URL %s", options.Url)
 
-	// Set HTTP client transport config
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.TLSClientConfig = options.TlsConfig
-
 	client := http.Client{
 		// By default, Go does not impose a timeout, so an HTTP connection attempt can hang for a LONG time.
 		Timeout: time.Duration(options.Timeout) * time.Second,
-		// Include the previously created transport config
-		Transport: tr,
+		// Use http.DefaultTransport with custom TLS configuration applied
+		Transport: getDefaultHttpTransportWithTlsConfig(options.TlsConfig),
 	}
 
 	resp, err := client.Get(options.Url)
@@ -263,14 +259,11 @@ func HTTPDoWithOptionsE(
 ) (int, string, error) {
 	logger.Logf(t, "Making an HTTP %s call to URL %s", options.Method, options.Url)
 
-	tr := &http.Transport{
-		TLSClientConfig: options.TlsConfig,
-	}
-
 	client := http.Client{
 		// By default, Go does not impose a timeout, so an HTTP connection attempt can hang for a LONG time.
-		Timeout:   time.Duration(options.Timeout) * time.Second,
-		Transport: tr,
+		Timeout: time.Duration(options.Timeout) * time.Second,
+		// Use http.DefaultTransport with custom TLS configuration applied
+		Transport: getDefaultHttpTransportWithTlsConfig(options.TlsConfig),
 	}
 
 	req := newRequest(options.Method, options.Url, options.Body, options.Headers)
@@ -532,6 +525,13 @@ func HTTPDoWithCustomValidationWithOptionsE(t testing.TestingT, options HttpDoOp
 	}
 
 	return nil
+}
+
+func getDefaultHttpTransportWithTlsConfig(config *tls.Config) *http.Transport {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = config
+
+	return tr
 }
 
 func newRequest(method string, url string, body io.Reader, headers map[string]string) *http.Request {
