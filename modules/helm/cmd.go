@@ -69,7 +69,7 @@ func prepareHelmCommand(t testing.TestingT, options *Options, cmd string, additi
 	args = append(args, additionalArgs...)
 
 	executable := "helm"
-	if options.Executable != nil && options.Executable != "" {
+	if options.Executable != "" {
 		executable = options.Executable
 	}
 
