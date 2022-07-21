@@ -69,8 +69,8 @@ func prepareHelmCommand(t testing.TestingT, options *Options, cmd string, additi
 	args = append(args, additionalArgs...)
 
 	executable := "helm"
-	if options.KubectlOptions != nil && options.KubectlOptions.Executable != "" {
-		executable = options.KubectlOptions.Executable
+	if options.Executable != nil && options.Executable != "" {
+		executable = options.Executable
 	}
 
 	helmCmd := shell.Command{
